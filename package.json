@@ -13,6 +13,7 @@
     "clean": "rm -rf artifacts typechain && yarn clean:packages",
     "clean:packages": "lerna run clean",
     "publish:packages": "lerna run build && lerna publish",
+    "setup:anchor-trees": "./scripts/bash/groth16/anchor_trees/phase2_anchor_trees.sh",
     "setup": "./scripts/bash/setup_verifiers.sh",
     "test": "npx hardhat test"
   },
