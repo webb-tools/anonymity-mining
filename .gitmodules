@@ -1,0 +1,3 @@
+[submodule "anonymity-mining-fixtures"]
+	path = anonymity-mining-fixtures
+	url = https://github.com/webb-tools/anonymity-mining-fixtures

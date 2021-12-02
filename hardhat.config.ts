@@ -7,19 +7,19 @@ import { subtask } from 'hardhat/config'
 
 const poseidonGenContract = require('circomlibjs/src/poseidon_gencontract.js');
 
-const buildPoseidon = async (numInputs: number) => {
-  //@ts-ignore
-  await overwriteArtifact(`PoseidonT${numInputs + 1}`, poseidonGenContract.createCode(numInputs));
-}
+// const buildPoseidon = async (numInputs: number) => {
+//   //@ts-ignore
+//   await overwriteArtifact(`PoseidonT${numInputs + 1}`, poseidonGenContract.createCode(numInputs));
+// }
 
-subtask('typechain-generate-types',
-  async (taskArgs, hre, runSuper) => {
+// subtask('typechain-generate-types',
+//   async (taskArgs, hre, runSuper) => {
 
-    // overwrite the artifact before generating types
-    await buildPoseidon(2);
-    await runSuper();
-  }
-)
+//     // overwrite the artifact before generating types
+//     await buildPoseidon(2);
+//     await runSuper();
+//   }
+// )
 
 const config: HardhatUserConfig = {
   defaultNetwork: 'hardhat',

@@ -1,5 +1,6 @@
 import { ethers, BigNumberish, BigNumber } from "ethers";
-import { AnchorTrees as AnchorTreesContract, AnchorTrees__factory } from '@webb-tools/contracts';
+import { AnchorTrees as AnchorTreesContract} from '../../typechain/AnchorTrees';
+import { AnchorTrees__factory } from '../../typechain/factories/AnchorTrees__factory'
 import { MerkleTree } from "./MerkleTree";
 import { p256, toHex } from '@webb-tools/utils';
 import { toFixedHex, bitsToNumber, poseidonHash, toBuffer } from "./utils";
