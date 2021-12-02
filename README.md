@@ -1,2 +1,2 @@
-# webb-anonymity-mining
+# anonymity-mining
 Anonymity Mining for the Webb Protocol
