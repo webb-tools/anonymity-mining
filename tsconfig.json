@@ -1,0 +1,39 @@
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@webb-tools/contracts": [
+        "packages/contracts/src"
+      ],
+      "@webb-tools/contracts/*": [
+        "packages/contracts/src/*"
+      ],
+      "@webb-tools/fixed-bridge": [
+        "packages/fixed-bridge/src"
+      ],
+      "@webb-tools/fixed-bridge/*": [
+        "packages/fixed-bridge/src/*"
+      ],
+      "@webb-tools/tokens": [
+        "packages/tokens/src"
+      ],
+      "@webb-tools/tokens/*": [
+        "packages/tokens/src/*"
+      ],
+      "@webb-tools/utils": [
+        "packages/utils/src"
+      ],
+      "@webb-tools/utils/*": [
+        "packages/utils/src/*"
+      ],
+      "@webb-tools/vbridge": [
+        "packages/vbridge/src"
+      ],
+      "@webb-tools/vbridge/*": [
+        "packages/vbridge/src/*"
+      ],
+    },
+    "noEmit": true
+  }
+}
