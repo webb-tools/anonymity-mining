@@ -60,6 +60,7 @@
     "ethers-eip712": "^0.2.0",
     "hardhat-artifactor": "^0.2.0",
     "hardhat-circom": "^1.0.1",
+    "jssha": "^3.2.0",
     "maci-crypto": "^0.9.1",
     "maci-domainobjs": "^0.9.1",
     "prettier": "^2.3.2",

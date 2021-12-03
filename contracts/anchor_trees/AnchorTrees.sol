@@ -6,6 +6,7 @@ pragma experimental ABIEncoderV2;
 import "../interfaces/IAnchorTreesV1.sol";
 import "../interfaces/IBatchTreeUpdateVerifier.sol";
 import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import "hardhat/console.sol";
 
 /// @dev This contract holds a merkle tree of all tornado cash deposit and withdrawal events
 contract AnchorTrees is Initializable {
@@ -103,13 +104,15 @@ contract AnchorTrees is Initializable {
     governance = _governance;
     anchorTreesV1 = _anchorTreesV1;
     maxEdges = _maxEdges;
-
+    console.log("hi1");
     depositsV1Length = findArrayLength(
       _anchorTreesV1,
       "deposits(uint256)",
       _searchParams.depositsFrom,
       _searchParams.depositsStep
     );
+
+    console.log("hi2");
 
     withdrawalsV1Length = findArrayLength(
       _anchorTreesV1,
@@ -382,13 +385,22 @@ contract AnchorTrees is Initializable {
     uint256 _step // optimal step size to find first match, approximately equals dispersion
   ) internal view virtual returns (uint256) {
     // Find the segment with correct array length
+    console.log("Hi1");
     bool direction = elementExists(_anchorTreesV1, _type, _from);
+    console.log("%s", direction);
+    console.log("Hi2");
     do {
+      console.log("Hi2.5");
       _from = direction ? _from + _step : _from - _step;
+      console.log("Hi3");
+      console.log(_from);
     } while (direction == elementExists(_anchorTreesV1, _type, _from));
     uint256 high = direction ? _from : _from + _step;
+    console.log("Hi4");
     uint256 low = direction ? _from - _step : _from;
+    console.log("Hi5");
     uint256 mid = (high + low) / 2;
+    console.log("Hi6");
 
     // Perform a binary search in this segment
     while (low < mid) {
@@ -408,6 +420,8 @@ contract AnchorTrees is Initializable {
     uint256 index
   ) public view returns (bool success) {
     // Try to get the element. If it succeeds the array length is higher, it it reverts the length is equal or lower
+    console.log(_type);
+    console.log(index);
     (success, ) = address(_anchorTreesV1).staticcall{ gas: 2500 }(abi.encodeWithSignature(_type, index));
   }
 

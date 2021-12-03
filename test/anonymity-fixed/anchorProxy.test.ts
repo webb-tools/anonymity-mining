@@ -6,10 +6,12 @@
  const assert = require('assert');
  import { artifacts, ethers } from 'hardhat';
  const TruffleAssert = require('truffle-assertions');
+ import { BigNumber } from '@ethersproject/bignumber';
  
  const fs = require('fs');
  const path = require('path');
  const { toBN, randomHex } = require('web3-utils');
+ import { randomBN } from '../../packages/anchor-trees/utils';
  
  // Typechain generated bindings for contracts
  import {
@@ -20,12 +22,15 @@
 
  import {
   ERC20Mock as Token,
-  ERC20Mock__factory as TokenFactory,
+  ERC20Mock__factory as TokenFactory
  } from '../../typechain';
- 
+
  // Convenience wrapper classes for contract classes
- import { Anchor, AnchorProxy, MerkleTree, Verifier } from '@webb-tools/fixed-bridge'
+ import { Anchor, AnchorProxy, Verifier } from '@webb-tools/fixed-bridge';
  import { fetchComponentsFromFilePaths, ZkComponents, toFixedHex } from '@webb-tools/utils';
+ import { AnchorTrees } from '../../packages/anchor-trees/AnchorTrees';
+ import { MerkleTree } from '../../packages/anchor-trees/MerkleTree';
+import { AnchorTreesV1Mock } from '../../packages/anchor-trees/AnchorTreesV1Mock';
  
  const { NATIVE_AMOUNT } = process.env
  const snarkjs = require('snarkjs')
@@ -34,7 +39,7 @@
  const F = require('circomlibjs').babyjub.F;
  const Scalar = require("ffjavascript").Scalar;
  
- describe('AnchorProxy', () => {
+ describe('AnchorProxy all instances disabled', () => {
    let anchorProxy: AnchorProxy;
    let anchor1: Anchor;
    let anchor2: Anchor;
@@ -72,8 +77,6 @@
      const wallet = signers[0];
      const sender = wallet;
  
-     tree = new MerkleTree('', levels);
- 
      // create poseidon hasher
      const hasherFactory = new PoseidonT3__factory(sender);
      hasherInstance = await hasherFactory.deploy()
@@ -86,7 +89,8 @@
      token = await tokenFactory.deploy();
      await token.deployed();
      await token.mint(sender.address, '10000000000000000000000');
- 
+    
+
  
      // create Anchor 1
      anchor1 = await Anchor.createAnchor(
@@ -212,4 +216,170 @@
      });  
    })
  })
+
+ describe('AnchorProxy with AnchorTrees', () => {
+  let anchorProxy: AnchorProxy;
+  let anchor1: Anchor;
+  let anchor2: Anchor;
+  let anchorTreesV1Mock: AnchorTreesV1Mock;
+  let anchorTrees: AnchorTrees;
+  let zkComponents: ZkComponents;
+
+  let notes;
+  const depositEvents = []
+  const withdrawalEvents = []
+  let instances;
+  let register;
+
+  const levels = 5;
+  const CHUNK_TREE_HEIGHT = 2;
+  const value = NATIVE_AMOUNT || '1000000000000000000' // 1 ether
+  let tree: MerkleTree;
+  const fee = BigInt((new BN(`${NATIVE_AMOUNT}`).shrn(1)).toString()) || BigInt((new BN(`${1e17}`)).toString());
+  const refund = BigInt((new BN('0')).toString());
+  let recipient = "0x1111111111111111111111111111111111111111";
+  let verifier: Verifier;
+  let hasherInstance: any;
+  let token: Token;
+  let wrappedToken: WrappedToken;
+  let tokenDenomination = '1000000000000000000' // 1 ether
+  const chainID = 31337;
+  const MAX_EDGES = 1;
+  let createWitness: any;
+  
+  //dummy addresses for anchor proxy tests
+  let anchorTreesDummyAddress = "0x2111111111111111111111111111111111111111"
+  let governanceDummyAddress = "0x3111111111111111111111111111111111111111"
+
+  before(async () => {
+    zkComponents = await fetchComponentsFromFilePaths(
+      path.resolve(__dirname, '../../anonymity-mining-fixtures/fixtures/bridge/2/poseidon_bridge_2.wasm'),
+      path.resolve(__dirname, '../../anonymity-mining-fixtures/fixtures/bridge/2/witness_calculator.js'),
+      path.resolve(__dirname, '../../anonymity-mining-fixtures/fixtures/bridge/2/circuit_final.zkey')
+    );
+
+    instances = [
+      '0x1111000000000000000000000000000000001111',
+      '0x2222000000000000000000000000000000002222',
+      '0x3333000000000000000000000000000000003333',
+      '0x4444000000000000000000000000000000004444',
+    ]
+  })
+
+  beforeEach(async () => {
+    const signers = await ethers.getSigners();
+    const wallet = signers[0];
+    const sender = wallet;
+    
+    // create poseidon hasher
+    const hasherFactory = new PoseidonT3__factory(sender);
+    hasherInstance = await hasherFactory.deploy()
+   
+    // create poseidon verifier
+    verifier = await Verifier.createVerifier(sender);
+
+    // create token
+    const tokenFactory = new TokenFactory(wallet);
+    token = await tokenFactory.deploy();
+    await token.deployed();
+    await token.mint(sender.address, '10000000000000000000000');
+
+    tree = new MerkleTree(levels);
+    console.log(tree.root().toString());
+    //create new anchortreesv1mock
+    const anchorTreesV1Mock = await AnchorTreesV1Mock.createAnchorTreesV1Mock(tree.root(), tree.root().toString(), sender);
+
+    
+
+    notes = []
+    for (let i = 0; i < 2 ** CHUNK_TREE_HEIGHT; i++) {
+      notes[i] = {
+        instance: instances[i % instances.length],
+        depositTimestamp: BigNumber.from(100),
+        withdrawalTimestamp: BigNumber.from(200),
+        commitment: toFixedHex(randomBN()),
+        nullifierHash: toFixedHex(randomBN()),
+      }
+      //console.log(notes[i]);
+      await anchorTreesV1Mock.contract.register(notes[i].instance, notes[i].commitment, notes[i].nullifierHash, notes[i].depositTimestamp, notes[i].withdrawalTimestamp);
+
+      console.log(await anchorTreesV1Mock.contract.getRegisteredWithdrawals());
+
+      depositEvents[i] = {
+        hash: toFixedHex(notes[i].commitment),
+        instance: toFixedHex(notes[i].instance, 20),
+        blockTimestamp: toFixedHex(notes[i].depositTimestamp, 4),
+      }
+      withdrawalEvents[i] = {
+        hash: toFixedHex(notes[i].nullifierHash),
+        instance: toFixedHex(notes[i].instance, 20),
+        blockTimestamp: toFixedHex(notes[i].withdrawalTimestamp, 4),
+      }
+    }
+
+    anchorTrees = await AnchorTrees.createAnchorTrees(
+      governanceDummyAddress, 
+      anchorTreesV1Mock.contract.address, {depositsFrom: 2, depositsStep: 1, withdrawalsFrom: 2, withdrawalsStep: 1},
+       levels, 
+       1, 
+       sender);
+
+  
+    // create Anchor 1
+    anchor1 = await Anchor.createAnchor(
+      verifier.contract.address,
+      hasherInstance.address,
+      tokenDenomination,
+      levels,
+      token.address,
+      sender.address,
+      sender.address,
+      sender.address,
+      MAX_EDGES,
+      zkComponents,
+      sender,
+    );
+
+    anchor2 = await Anchor.createAnchor(
+      verifier.contract.address,
+      hasherInstance.address,
+      tokenDenomination,
+      levels,
+      token.address,
+      sender.address,
+      sender.address,
+      sender.address,
+      MAX_EDGES,
+      zkComponents,
+      sender,
+    );
+    
+    const anchorList : Anchor[] = [anchor1, anchor2];
+
+    // create Anchor Proxy
+    anchorProxy = await AnchorProxy.createAnchorProxy(
+      anchorTreesDummyAddress,
+      governanceDummyAddress,
+      anchorList,
+      sender
+    );
+
+    // approve the anchor to spend the minted funds
+    await token.approve(anchorProxy.contract.address, '10000000000000000000000');
+
+    createWitness = async (data: any) => {
+      const witnessCalculator = require("../../anonymity-mining-fixtures/fixtures/bridge/2/witness_calculator.js");
+      const fileBuf = require('fs').readFileSync('./anonymity-mining-fixtures/fixtures/bridge/2/poseidon_bridge_2.wasm');
+      const wtnsCalc = await witnessCalculator(fileBuf)
+      const wtns = await wtnsCalc.calculateWTNSBin(data,0);
+      return wtns;
+    }
+  })
+
+  describe('#deposit', () => {
+    it.only('should emit event, balances should be correct', async () => {
+        let { deposit, index } = await anchorProxy.deposit(anchor1.contract.address, chainID);
+    });
+  });
+ });
  

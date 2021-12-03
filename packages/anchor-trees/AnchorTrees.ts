@@ -13,6 +13,10 @@ export class AnchorTrees {
   depositTree: MerkleTree;
   withdrawalTree: MerkleTree;
 
+  circuitWASMPath: string;
+  circuitZkeyPath: string;
+  witnessCalculator: any;
+
   constructor(
     signer: ethers.Signer,
     contract: AnchorTreesContract,
@@ -22,6 +26,10 @@ export class AnchorTrees {
     this.contract = contract;
     this.depositTree = new MerkleTree(treeHeight);
     this.withdrawalTree = new MerkleTree(treeHeight);
+
+    this.circuitWASMPath = 'anonymity-mining-fixtures/fixtures/anchor_trees/0/anchor_trees_test.wasm';
+    this.circuitZkeyPath = 'anonymity-mining-fixtures/fixtures/anchor_trees/0/circuit_final.zkey';
+    this.witnessCalculator = require("../../../anonymity-mining-fixtures/fixtures/anchor_trees/0/witness_calculator.js");
   }
 
   public static async createAnchorTrees (
@@ -172,11 +180,11 @@ export class AnchorTrees {
 
    //TODO: define zkey path
    public async proveAndVerify(wtns: any) {
-    let res = await snarkjs.groth16.prove(this.ZkeyPath, wtns);
+    let res = await snarkjs.groth16.prove(this.circuitZkeyPath, wtns);
     let proof = res.proof;
     let publicSignals = res.publicSignals;
 
-    const vKey = await snarkjs.zKey.exportVerificationKey(this.zkeypath);
+    const vKey = await snarkjs.zKey.exportVerificationKey(this.circuitZkeyPath);
     res = await snarkjs.groth16.verify(vKey, publicSignals, proof);
 
     let proofEncoded = await AnchorTrees.generateProofCallData(proof, publicSignals);
@@ -185,7 +193,7 @@ export class AnchorTrees {
 
   //TODO: need to define WASMPath and witnessCalculator
   public async createWitness(data: any) {
-    const fileBuf = require('fs').readFileSync(this.WASMPath);
+    const fileBuf = require('fs').readFileSync(this.circuitWASMPath);
     const witnessCalculator = this.witnessCalculator(fileBuf);
     const buff = await witnessCalculator.calculateWTNSBin(data,0);
     return buff;
@@ -225,7 +233,7 @@ export class AnchorTrees {
 
     //End generating Proof
 
-    const tx = await this.contract.updateDepositTree(proofEncoded, ...args); 
+    const tx = await this.contract.updateWithdrawalTree(proofEncoded, ...args); 
     tx.wait();
   }
   

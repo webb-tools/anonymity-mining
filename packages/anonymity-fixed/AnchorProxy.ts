@@ -31,6 +31,7 @@ export class AnchorProxy {
     contract: AnchorProxyContract,
     signer: ethers.Signer,
     anchorList: Anchor[],
+    instanceList: Instance[]
 
   ) {
     this.contract = contract;
@@ -39,6 +40,7 @@ export class AnchorProxy {
     for (let i = 0; i < anchorList.length; i++) {
       this.insertAnchor(anchorList[i]);
     }
+    
   }
 
   //need to fix this

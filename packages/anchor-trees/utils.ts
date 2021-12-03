@@ -1,14 +1,14 @@
-import crypto from 'crypto';
+const crypto = require('crypto');
 const ethers = require('ethers')
 const BigNumber = ethers.BigNumber
-const { poseidon } = require('circomlib')
+const { poseidon } = require('circomlibjs')
 
 export const poseidonHash = (items) => BigNumber.from(poseidon(items).toString())
 
 export const poseidonHash2 = (a, b) => poseidonHash([a, b])
 
 /** Generate random number of specified byte length */
-const randomBN = (nbytes = 31) => BigNumber.from(crypto.randomBytes(nbytes))
+export const randomBN = (nbytes = 31) => BigNumber.from(crypto.randomBytes(nbytes));
 
 /** BigNumber to hex string of specified length */
 export const toFixedHex = (number, length = 32) =>
