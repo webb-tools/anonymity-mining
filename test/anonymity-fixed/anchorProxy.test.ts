@@ -26,7 +26,8 @@
  } from '../../typechain';
 
  // Convenience wrapper classes for contract classes
- import { Anchor, AnchorProxy, Verifier } from '@webb-tools/fixed-bridge';
+ import { Anchor, Verifier } from '@webb-tools/fixed-bridge';
+ import { AnchorProxy } from '../../packages/anonymity-fixed/AnchorProxy'
  import { fetchComponentsFromFilePaths, ZkComponents, toFixedHex } from '@webb-tools/utils';
  import { AnchorTrees } from '../../packages/anchor-trees/AnchorTrees';
  const MerkleTree = require('fixed-merkle-tree');
@@ -123,12 +124,13 @@
      const anchorList : Anchor[] = [anchor1, anchor2];
  
      // create Anchor Proxy
-     anchorProxy = await AnchorProxy.createAnchorProxy(
-       anchorTreesDummyAddress,
-       governanceDummyAddress,
-       anchorList,
-       sender
-     );
+    //  anchorProxy = await AnchorProxy.createAnchorProxy(
+    //    anchorTreesDummyAddress,
+    //    governanceDummyAddress,
+    //    anchorList,
+
+    //    sender
+    //  );
  
      // approve the anchor to spend the minted funds
      await token.approve(anchorProxy.contract.address, '10000000000000000000000');
@@ -247,7 +249,7 @@
   
   //dummy addresses for anchor proxy tests
   let anchorTreesDummyAddress = "0x2111111111111111111111111111111111111111"
-  let governanceDummyAddress = "0x3111111111111111111111111111111111111111"
+  let governanceDummyAddress;
 
   before(async () => {
     zkComponents = await fetchComponentsFromFilePaths(
@@ -268,7 +270,8 @@
     const signers = await ethers.getSigners();
     const wallet = signers[0];
     const sender = wallet;
-    
+    let governanceDummy = signers[1];
+    governanceDummyAddress = signers[1].address;
     // create poseidon hasher
     const hasherFactory = new PoseidonT3__factory(sender);
     hasherInstance = await hasherFactory.deploy()
@@ -323,14 +326,17 @@
     );
     
     const anchorList : Anchor[] = [anchor1, anchor2];
-
+    const instanceStateList = [AnchorProxy.stringToInstanceState('MINEABLE'), AnchorProxy.stringToInstanceState('MINEABLE')];
     // create Anchor Proxy
     anchorProxy = await AnchorProxy.createAnchorProxy(
-      anchorTreesDummyAddress,
+      anchorTrees.contract.address,
       governanceDummyAddress,
       anchorList,
+      instanceStateList,
       sender
     );
+    
+    await anchorTrees.initialize(anchorProxy.contract.address, governanceDummyAddress, governanceDummy);
 
     // approve the anchor to spend the minted funds
     await token.approve(anchorProxy.contract.address, '10000000000000000000000');
@@ -345,8 +351,8 @@
   })
 
   describe('#deposit', () => {
-    it.only('should emit event, balances should be correct', async () => {
-        let { deposit, index } = await anchorProxy.deposit(anchor1.contract.address, chainID);
+    it.only('deposit anchor proxy anchor trees', async () => {
+      await anchorProxy.deposit(anchor1.contract.address, chainID);
     });
   });
  });

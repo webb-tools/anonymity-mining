@@ -1,13 +1,13 @@
 import { ethers } from "ethers";
-import { AnchorProxy as AnchorProxyContract, AnchorProxy__factory } from '@webb-tools/contracts';
+import { AnchorProxy as AnchorProxyContract, AnchorProxy__factory } from '../../typechain';
 import { WithdrawalEvent, RefreshEvent } from '@webb-tools/contracts/src/AnchorBase';
 import { Anchor } from '@webb-tools/fixed-bridge';
 import { AnchorDepositInfo } from '@webb-tools/fixed-bridge';
 import { toFixedHex } from "@webb-tools/utils";
 
-enum InstanceState {
-  ENABLED,
+export enum InstanceState {
   DISABLED,
+  ENABLED,
   MINEABLE,
 }
 
@@ -25,7 +25,8 @@ export class AnchorProxy {
   signer: ethers.Signer;
   contract: AnchorProxyContract;
   // An AnchorProxy can proxy for multiple anchors so we have a map from address to Anchor Class
-  anchorProxyMap: Map<string, Anchor>; 
+  anchorMap: Map<string, Anchor>; 
+  instanceMap: Map<string, InstanceState>;
   
   constructor(
     contract: AnchorProxyContract,
@@ -34,11 +35,10 @@ export class AnchorProxy {
   ) {
     this.contract = contract;
     this.signer = signer;
-    this.anchorProxyMap = new Map<string, Anchor>();
+    this.anchorMap = new Map<string, Anchor>();
     for (let i = 0; i < anchorList.length; i++) {
       this.insertAnchor(anchorList[i]);
     }
-    
   }
 
   //need to fix this
@@ -46,15 +46,16 @@ export class AnchorProxy {
     _anchorTrees: string,
     _governance: string,
     _anchorList: Anchor[],
+    _instanceStateList: InstanceState[],
     deployer: ethers.Signer
   ) {
     const factory = new AnchorProxy__factory(deployer);
-    const instances = _anchorList.map((a: Anchor) => {
+    const instances = _anchorList.map((a: Anchor, index) => {
       return {
         addr: a.contract.address,
         instance: {
           token: a.token || '',
-          state: InstanceState.DISABLED,
+          state: _instanceStateList[index],
         },
       }
     });
@@ -78,10 +79,12 @@ export class AnchorProxy {
       _encryptedNote,
       { gasLimit: '0x5B8D80' }
     );
+
+    console.log("hi bear")
   
     await tx.wait();
 
-    const anchor = this.anchorProxyMap.get(anchorAddr);
+    const anchor = this.anchorMap.get(anchorAddr);
     if (!anchor) {
       throw new Error('Anchor not found');
     }
@@ -99,7 +102,7 @@ export class AnchorProxy {
     fee: bigint,
     refreshCommitment: string | number,
   ): Promise<RefreshEvent | WithdrawalEvent> {
-    const anchor = this.anchorProxyMap.get(anchorAddr);
+    const anchor = this.anchorMap.get(anchorAddr);
     if (!anchor) {
       throw new Error('Anchor not found');
     }
@@ -133,6 +136,18 @@ export class AnchorProxy {
   }
 
   public insertAnchor(anchor: Anchor) {
-    this.anchorProxyMap.set(anchor.contract.address, anchor);
+    this.anchorMap.set(anchor.contract.address, anchor);
+  }
+
+  public static stringToInstanceState(stringInstance: string): InstanceState {
+    if (stringInstance === 'MINEABLE') {
+      return InstanceState.MINEABLE;
+    } else if (stringInstance === 'ENABLED')  {
+      return InstanceState.ENABLED;
+    } else if (stringInstance === "DISABLED") {
+      return InstanceState.DISABLED;
+    } else {
+      console.log("Invalid string instance");
+    }
   }
 }

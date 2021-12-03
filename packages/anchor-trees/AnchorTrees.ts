@@ -51,8 +51,9 @@ export class AnchorTrees {
   public async initialize(
     anchorProxy: string,
     verifier: string,
+    governance: ethers.Signer
   ) {
-    const tx = await this.contract.initialize(anchorProxy, verifier);
+    const tx = await this.contract.connect(governance).initialize(anchorProxy, verifier);
     await tx.wait();
   }
 
