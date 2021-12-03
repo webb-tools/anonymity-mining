@@ -1,17 +1,17 @@
 import { ethers, BigNumberish, BigNumber } from "ethers";
 import { AnchorTrees as AnchorTreesContract} from '../../typechain/AnchorTrees';
 import { AnchorTrees__factory } from '../../typechain/factories/AnchorTrees__factory'
-import { MerkleTree } from "./MerkleTree";
 import { p256, toHex } from '@webb-tools/utils';
 import { toFixedHex, bitsToNumber, poseidonHash, toBuffer } from "./utils";
 const jsSHA = require('jssha')
 const snarkjs = require('snarkjs');
+const MerkleTree  = require("fixed-merkle-tree");
 
 export class AnchorTrees {
   signer: ethers.Signer;
   contract: AnchorTreesContract;
-  depositTree: MerkleTree;
-  withdrawalTree: MerkleTree;
+  depositTree: any;
+  withdrawalTree: any;
 
   circuitWASMPath: string;
   circuitZkeyPath: string;
@@ -24,8 +24,10 @@ export class AnchorTrees {
   ) {
     this.signer = signer;
     this.contract = contract;
-    this.depositTree = new MerkleTree(treeHeight);
-    this.withdrawalTree = new MerkleTree(treeHeight);
+    this.depositTree = new MerkleTree(treeHeight, []);
+    console.log("root");
+    console.log(this.depositTree.root());
+    this.withdrawalTree = new MerkleTree(treeHeight, []);
 
     this.circuitWASMPath = 'anonymity-mining-fixtures/fixtures/anchor_trees/0/anchor_trees_test.wasm';
     this.circuitZkeyPath = 'anonymity-mining-fixtures/fixtures/anchor_trees/0/circuit_final.zkey';
@@ -34,20 +36,13 @@ export class AnchorTrees {
 
   public static async createAnchorTrees (
     _governance: string,
-    _anchorTreesV1: string,
-    _searchParams: {
-      depositsFrom: BigNumberish,
-      depositsStep: BigNumberish,
-      withdrawalsFrom: BigNumberish,
-      withdrawalsStep: BigNumberish
-    },
     levels: BigNumberish,
     _maxEdges: number,
     deployer: ethers.Signer
   ) {
     
     const factory = new AnchorTrees__factory(deployer);
-    const contract = await factory.deploy(_governance, _anchorTreesV1, _searchParams, _maxEdges);
+    const contract = await factory.deploy(_governance, _maxEdges);
     await contract.deployed();
 
     return new AnchorTrees(deployer, contract, BigNumber.from(levels).toNumber());

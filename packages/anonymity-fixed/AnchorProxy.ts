@@ -30,9 +30,7 @@ export class AnchorProxy {
   constructor(
     contract: AnchorProxyContract,
     signer: ethers.Signer,
-    anchorList: Anchor[],
-    instanceList: Instance[]
-
+    anchorList: Anchor[]
   ) {
     this.contract = contract;
     this.signer = signer;

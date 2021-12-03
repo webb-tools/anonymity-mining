@@ -29,8 +29,7 @@
  import { Anchor, AnchorProxy, Verifier } from '@webb-tools/fixed-bridge';
  import { fetchComponentsFromFilePaths, ZkComponents, toFixedHex } from '@webb-tools/utils';
  import { AnchorTrees } from '../../packages/anchor-trees/AnchorTrees';
- import { MerkleTree } from '../../packages/anchor-trees/MerkleTree';
-import { AnchorTreesV1Mock } from '../../packages/anchor-trees/AnchorTreesV1Mock';
+ const MerkleTree = require('fixed-merkle-tree');
  
  const { NATIVE_AMOUNT } = process.env
  const snarkjs = require('snarkjs')
@@ -47,7 +46,7 @@ import { AnchorTreesV1Mock } from '../../packages/anchor-trees/AnchorTreesV1Mock
  
    const levels = 30;
    const value = NATIVE_AMOUNT || '1000000000000000000' // 1 ether
-   let tree: MerkleTree;
+   let tree: any;
    const fee = BigInt((new BN(`${NATIVE_AMOUNT}`).shrn(1)).toString()) || BigInt((new BN(`${1e17}`)).toString());
    const refund = BigInt((new BN('0')).toString());
    let recipient = "0x1111111111111111111111111111111111111111";
@@ -221,7 +220,6 @@ import { AnchorTreesV1Mock } from '../../packages/anchor-trees/AnchorTreesV1Mock
   let anchorProxy: AnchorProxy;
   let anchor1: Anchor;
   let anchor2: Anchor;
-  let anchorTreesV1Mock: AnchorTreesV1Mock;
   let anchorTrees: AnchorTrees;
   let zkComponents: ZkComponents;
 
@@ -234,7 +232,7 @@ import { AnchorTreesV1Mock } from '../../packages/anchor-trees/AnchorTreesV1Mock
   const levels = 5;
   const CHUNK_TREE_HEIGHT = 2;
   const value = NATIVE_AMOUNT || '1000000000000000000' // 1 ether
-  let tree: MerkleTree;
+  let tree: any;
   const fee = BigInt((new BN(`${NATIVE_AMOUNT}`).shrn(1)).toString()) || BigInt((new BN(`${1e17}`)).toString());
   const refund = BigInt((new BN('0')).toString());
   let recipient = "0x1111111111111111111111111111111111111111";
@@ -284,45 +282,15 @@ import { AnchorTreesV1Mock } from '../../packages/anchor-trees/AnchorTreesV1Mock
     await token.deployed();
     await token.mint(sender.address, '10000000000000000000000');
 
-    tree = new MerkleTree(levels);
-    console.log(tree.root().toString());
-    //create new anchortreesv1mock
-    const anchorTreesV1Mock = await AnchorTreesV1Mock.createAnchorTreesV1Mock(tree.root(), tree.root().toString(), sender);
+    //tree = new MerkleTree(levels, []);
 
-    
-
-    notes = []
-    for (let i = 0; i < 2 ** CHUNK_TREE_HEIGHT; i++) {
-      notes[i] = {
-        instance: instances[i % instances.length],
-        depositTimestamp: BigNumber.from(100),
-        withdrawalTimestamp: BigNumber.from(200),
-        commitment: toFixedHex(randomBN()),
-        nullifierHash: toFixedHex(randomBN()),
-      }
-      //console.log(notes[i]);
-      await anchorTreesV1Mock.contract.register(notes[i].instance, notes[i].commitment, notes[i].nullifierHash, notes[i].depositTimestamp, notes[i].withdrawalTimestamp);
-
-      console.log(await anchorTreesV1Mock.contract.getRegisteredWithdrawals());
-
-      depositEvents[i] = {
-        hash: toFixedHex(notes[i].commitment),
-        instance: toFixedHex(notes[i].instance, 20),
-        blockTimestamp: toFixedHex(notes[i].depositTimestamp, 4),
-      }
-      withdrawalEvents[i] = {
-        hash: toFixedHex(notes[i].nullifierHash),
-        instance: toFixedHex(notes[i].instance, 20),
-        blockTimestamp: toFixedHex(notes[i].withdrawalTimestamp, 4),
-      }
-    }
-
+    console.log("creating anchor trees")
     anchorTrees = await AnchorTrees.createAnchorTrees(
-      governanceDummyAddress, 
-      anchorTreesV1Mock.contract.address, {depositsFrom: 2, depositsStep: 1, withdrawalsFrom: 2, withdrawalsStep: 1},
-       levels, 
-       1, 
-       sender);
+      governanceDummyAddress,
+      5, 
+      1,
+      sender
+    );
 
   
     // create Anchor 1

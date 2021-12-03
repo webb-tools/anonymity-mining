@@ -3,7 +3,6 @@
 pragma solidity ^0.8.0;
 pragma experimental ABIEncoderV2;
 
-import "../interfaces/IAnchorTreesV1.sol";
 import "../interfaces/IBatchTreeUpdateVerifier.sol";
 import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import "hardhat/console.sol";
@@ -24,23 +23,21 @@ contract AnchorTrees is Initializable {
   //End Roots Stuff
   address public anchorProxy;
   IBatchTreeUpdateVerifier public treeUpdateVerifier;
-  IAnchorTreesV1 public immutable anchorTreesV1;
 
   uint256 public constant CHUNK_TREE_HEIGHT = 8;
   uint256 public constant CHUNK_SIZE = 2**CHUNK_TREE_HEIGHT;
   uint256 public constant ITEM_SIZE = 32 + 20 + 4;
   uint256 public constant BYTES_SIZE = 32 + 32 + 4 + CHUNK_SIZE * ITEM_SIZE;
   uint256 public constant SNARK_FIELD = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
+  uint256 DEFAULT_ZERO_ROOT = 16640205414190175414380077665118269450294358858897019640557533278896634808665; //Need to properly fill in...
 
   mapping(uint256 => bytes32) public deposits;
   uint256 public depositsLength;
-  uint256 public lastProcessedDepositLeaf;
-  uint256 public immutable depositsV1Length;
+  uint256 public lastProcessedDepositLeaf = 0;
 
   mapping(uint256 => bytes32) public withdrawals;
   uint256 public withdrawalsLength;
-  uint256 public lastProcessedWithdrawalLeaf;
-  uint256 public immutable withdrawalsV1Length;
+  uint256 public lastProcessedWithdrawalLeaf = 0;
 
   //Start Edge Information
   uint8 public immutable maxEdges;
@@ -88,55 +85,21 @@ contract AnchorTrees is Initializable {
     _;
   }
 
-  struct SearchParams {
-    uint256 depositsFrom;
-    uint256 depositsStep;
-    uint256 withdrawalsFrom;
-    uint256 withdrawalsStep;
-  }
-
   constructor(
     address _governance,
-    IAnchorTreesV1 _anchorTreesV1,
-    SearchParams memory _searchParams,
     uint8 _maxEdges
   ) {
     governance = _governance;
-    anchorTreesV1 = _anchorTreesV1;
     maxEdges = _maxEdges;
-    console.log("hi1");
-    depositsV1Length = findArrayLength(
-      _anchorTreesV1,
-      "deposits(uint256)",
-      _searchParams.depositsFrom,
-      _searchParams.depositsStep
-    );
-
-    console.log("hi2");
-
-    withdrawalsV1Length = findArrayLength(
-      _anchorTreesV1,
-      "withdrawals(uint256)",
-      _searchParams.withdrawalsFrom,
-      _searchParams.withdrawalsStep
-    );
   }
 
   function initialize(address _anchorProxy, IBatchTreeUpdateVerifier _treeUpdateVerifier) public initializer onlyGovernance {
     anchorProxy = _anchorProxy;
     treeUpdateVerifier = _treeUpdateVerifier;
 
-    depositRoots[0] = anchorTreesV1.depositRoot();
-    uint256 lastDepositLeaf = anchorTreesV1.lastProcessedDepositLeaf();
-    require(lastDepositLeaf % CHUNK_SIZE == 0, "Incorrect AnchorTrees state");
-    lastProcessedDepositLeaf = lastDepositLeaf;
-    depositsLength = depositsV1Length;
-
-    withdrawalRoots[0] = anchorTreesV1.withdrawalRoot();
-    uint256 lastWithdrawalLeaf = anchorTreesV1.lastProcessedWithdrawalLeaf();
-    require(lastWithdrawalLeaf % CHUNK_SIZE == 0, "Incorrect AnchorTrees state");
-    lastProcessedWithdrawalLeaf = lastWithdrawalLeaf;
-    withdrawalsLength = withdrawalsV1Length;
+    //How to initialize deposits[0], withdrawals[0]?
+    depositRoots[0] = bytes32(DEFAULT_ZERO_ROOT);
+    withdrawalRoots[0] = bytes32(DEFAULT_ZERO_ROOT);
   }
 
   /// @dev Queue a new deposit data to be inserted into a merkle tree
@@ -183,7 +146,7 @@ contract AnchorTrees is Initializable {
     for (uint256 i = 0; i < CHUNK_SIZE; i++) {
       (bytes32 hash, address instance, uint256 blockTimestamp) = (_events[i].hash, _events[i].instance, _events[i].blockTimestamp);
       bytes32 leafHash = keccak256(abi.encode(instance, hash, blockTimestamp));
-      bytes32 deposit = offset + i >= depositsV1Length ? deposits[offset + i] : anchorTreesV1.deposits(offset + i);
+      bytes32 deposit = deposits[offset + i];
       require(leafHash == deposit, "Incorrect deposit");
       assembly {
         let itemOffset := add(data, mul(ITEM_SIZE, i))
@@ -191,11 +154,7 @@ contract AnchorTrees is Initializable {
         mstore(add(itemOffset, 0x5c), instance)
         mstore(add(itemOffset, 0x48), hash)
       }
-      if (offset + i >= depositsV1Length) {
-        delete deposits[offset + i];
-      } else {
-        emit DepositData(instance, hash, blockTimestamp, offset + i);
-      }
+      delete deposits[offset + i];
     }
 
     uint256 argsHash = uint256(sha256(data)) % SNARK_FIELD;
@@ -236,7 +195,7 @@ contract AnchorTrees is Initializable {
     for (uint256 i = 0; i < CHUNK_SIZE; i++) {
       (bytes32 hash, address instance, uint256 blockTimestamp) = (_events[i].hash, _events[i].instance, _events[i].blockTimestamp);
       bytes32 leafHash = keccak256(abi.encode(instance, hash, blockTimestamp));
-      bytes32 withdrawal = offset + i >= withdrawalsV1Length ? withdrawals[offset + i] : anchorTreesV1.withdrawals(offset + i);
+      bytes32 withdrawal = withdrawals[offset + i];
       require(leafHash == withdrawal, "Incorrect withdrawal");
       assembly {
         let itemOffset := add(data, mul(ITEM_SIZE, i))
@@ -244,11 +203,7 @@ contract AnchorTrees is Initializable {
         mstore(add(itemOffset, 0x5c), instance)
         mstore(add(itemOffset, 0x48), hash)
       }
-      if (offset + i >= withdrawalsV1Length) {
-        delete withdrawals[offset + i];
-      } else {
-        emit WithdrawalData(instance, hash, blockTimestamp, offset + i);
-      }
+      delete withdrawals[offset + i];
     }
 
     uint256 argsHash = uint256(sha256(data)) % SNARK_FIELD;
@@ -368,61 +323,6 @@ contract AnchorTrees is Initializable {
       require(isKnownNeighborWithdrawalRoot(_edge.chainID, _withdrawalRoots[i+1]), "withdrawal Neighbor root not found");
     }
     return true;
-  }
-
-  // function validateRoots(bytes32 _depositRoot, bytes32 _withdrawalRoot) public view {
-  //   require(_depositRoot == depositRoot || _depositRoot == previousDepositRoot, "Incorrect deposit tree root");
-  //   require(_withdrawalRoot == withdrawalRoot || _withdrawalRoot == previousWithdrawalRoot, "Incorrect withdrawal tree root");
-  // }
-
-  /// @dev There is no array length getter for deposit and withdrawal arrays
-  /// in the previous contract, so we have to find them length manually.
-  /// Used only during deployment
-  function findArrayLength(
-    IAnchorTreesV1 _anchorTreesV1,
-    string memory _type,
-    uint256 _from, // most likely array length after the proposal has passed
-    uint256 _step // optimal step size to find first match, approximately equals dispersion
-  ) internal view virtual returns (uint256) {
-    // Find the segment with correct array length
-    console.log("Hi1");
-    bool direction = elementExists(_anchorTreesV1, _type, _from);
-    console.log("%s", direction);
-    console.log("Hi2");
-    do {
-      console.log("Hi2.5");
-      _from = direction ? _from + _step : _from - _step;
-      console.log("Hi3");
-      console.log(_from);
-    } while (direction == elementExists(_anchorTreesV1, _type, _from));
-    uint256 high = direction ? _from : _from + _step;
-    console.log("Hi4");
-    uint256 low = direction ? _from - _step : _from;
-    console.log("Hi5");
-    uint256 mid = (high + low) / 2;
-    console.log("Hi6");
-
-    // Perform a binary search in this segment
-    while (low < mid) {
-      if (elementExists(_anchorTreesV1, _type, mid)) {
-        low = mid;
-      } else {
-        high = mid;
-      }
-      mid = (low + high) / 2;
-    }
-    return mid + 1;
-  }
-
-  function elementExists(
-    IAnchorTreesV1 _anchorTreesV1,
-    string memory _type,
-    uint256 index
-  ) public view returns (bool success) {
-    // Try to get the element. If it succeeds the array length is higher, it it reverts the length is equal or lower
-    console.log(_type);
-    console.log(index);
-    (success, ) = address(_anchorTreesV1).staticcall{ gas: 2500 }(abi.encodeWithSignature(_type, index));
   }
 
   function setAnchorProxyContract(address _anchorProxy) external onlyGovernance {
