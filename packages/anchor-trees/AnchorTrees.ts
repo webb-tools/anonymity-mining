@@ -31,9 +31,9 @@ export class AnchorTrees {
 
     this.circuitWASMPath = 'anonymity-mining-fixtures/fixtures/anchor_trees/0/anchor_trees_test.wasm';
     this.circuitZkeyPath = 'anonymity-mining-fixtures/fixtures/anchor_trees/0/circuit_final.zkey';
-    this.witnessCalculator = require("../../../anonymity-mining-fixtures/fixtures/anchor_trees/0/witness_calculator.js");
+    this.witnessCalculator = require("../../anonymity-mining-fixtures/fixtures/anchor_trees/0/witness_calculator.js");
   }
-
+  
   public static async createAnchorTrees (
     _governance: string,
     levels: BigNumberish,
@@ -66,7 +66,7 @@ export class AnchorTrees {
     for (let i = 0; i < input.instances.length; i++) {
       sha.update(toBuffer(input.hashes[i], 32))
       sha.update(toBuffer(input.instances[i], 20))
-      sha.update(toBuffer(input.blocks[i], 4))
+      sha.update(toBuffer(input.blockTimestamps[i], 4))
     }
   
     const hash = '0x' + sha.getHash('HEX')
@@ -82,7 +82,7 @@ export class AnchorTrees {
    *
    * @param tree Merkle tree with current smart contract state. This object is mutated during function execution.
    * @param events New batch of events to insert.
-   * @returns {{args: [string, string, string, string, *], input: {pathElements: *, instances: *, blocks: *, newRoot: *, hashes: *, oldRoot: *, pathIndices: string}}}
+   * @returns {{args: [string, string, string, string, *], input: {pathElements: *, instances: *, blockTimestamps: *, newRoot: *, hashes: *, oldRoot: *, pathIndices: string}}}
    */
   public static batchTreeUpdate(tree, events) {
     const batchHeight = Math.log2(events.length)
@@ -91,7 +91,7 @@ export class AnchorTrees {
     }
 
     const oldRoot = tree.root().toString()
-    const leaves = events.map((e) => poseidonHash([e.instance, e.hash, e.block]))
+    const leaves = events.map((e) => poseidonHash([e.instance, e.hash, e.blockTimestamp]))
     tree.bulkInsert(leaves)
     const newRoot = tree.root().toString()
     let { pathElements, pathIndices } = tree.path(tree.elements().length - 1)
@@ -105,7 +105,7 @@ export class AnchorTrees {
       pathElements: pathElements,
       instances: events.map((e) => BigNumber.from(e.instance).toString()),
       hashes: events.map((e) => BigNumber.from(e.hash).toString()),
-      blocks: events.map((e) => BigNumber.from(e.block).toString()),
+      blockTimestamps: events.map((e) => BigNumber.from(e.blockTimestamp).toString()),
     }
 
     input.argsHash = AnchorTrees.hashInputs(input)
@@ -118,7 +118,7 @@ export class AnchorTrees {
       events.map((e) => ({
         hash: toFixedHex(e.hash),
         instance: toFixedHex(e.instance, 20),
-        block: toFixedHex(e.block, 4),
+        blockTimestamp: toFixedHex(e.blockTimestamp, 4),
       })),
     ];
 
@@ -176,7 +176,9 @@ export class AnchorTrees {
 
    //TODO: define zkey path
    public async proveAndVerify(wtns: any) {
+    console.log(`circuit zkey is ${this.circuitZkeyPath}`);
     let res = await snarkjs.groth16.prove(this.circuitZkeyPath, wtns);
+    console.log("hib")
     let proof = res.proof;
     let publicSignals = res.publicSignals;
 
@@ -190,7 +192,7 @@ export class AnchorTrees {
   //TODO: need to define WASMPath and witnessCalculator
   public async createWitness(data: any) {
     const fileBuf = require('fs').readFileSync(this.circuitWASMPath);
-    const witnessCalculator = this.witnessCalculator(fileBuf);
+    const witnessCalculator = await this.witnessCalculator(fileBuf);
     const buff = await witnessCalculator.calculateWTNSBin(data,0);
     return buff;
   }
@@ -201,10 +203,10 @@ export class AnchorTrees {
     //Generating Proof
     //Step 1: Generate the witness input
     //This is already done by the batchTreeUpdate method taken from tornado so we can skip.
-
     //Step 2: Create the witness
-    const wtns = this.createWitness(input);
-
+    console.log("start create witness")
+    const wtns = await this.createWitness(input);
+    console.log(`wtns is ${wtns}`);
     //Step 3: Use the wtns to generate a proof
     let proofEncoded = await this.proveAndVerify(wtns);
 

@@ -12,6 +12,7 @@
  const path = require('path');
  const { toBN, randomHex } = require('web3-utils');
  import { randomBN } from '../../packages/anchor-trees/utils';
+ import { BatchTreeVerifier } from '../../packages/anchor-trees/BatchTreeVerifier';
  
  // Typechain generated bindings for contracts
  import {
@@ -51,6 +52,7 @@
    const fee = BigInt((new BN(`${NATIVE_AMOUNT}`).shrn(1)).toString()) || BigInt((new BN(`${1e17}`)).toString());
    const refund = BigInt((new BN('0')).toString());
    let recipient = "0x1111111111111111111111111111111111111111";
+   let batchTreeVerifier: BatchTreeVerifier;
    let verifier: Verifier;
    let hasherInstance: any;
    let token: Token;
@@ -83,6 +85,7 @@
  
      // create poseidon verifier
      verifier = await Verifier.createVerifier(sender);
+     batchTreeVerifier = await BatchTreeVerifier.createVerifier(sender);
  
      // create token
      const tokenFactory = new TokenFactory(wallet);
@@ -239,6 +242,7 @@
   const refund = BigInt((new BN('0')).toString());
   let recipient = "0x1111111111111111111111111111111111111111";
   let verifier: Verifier;
+  let batchTreeVerifier: BatchTreeVerifier;
   let hasherInstance: any;
   let token: Token;
   let wrappedToken: WrappedToken;
@@ -246,6 +250,7 @@
   const chainID = 31337;
   const MAX_EDGES = 1;
   let createWitness: any;
+  let depositDataEventFilter;
   
   //dummy addresses for anchor proxy tests
   let anchorTreesDummyAddress = "0x2111111111111111111111111111111111111111"
@@ -278,6 +283,7 @@
    
     // create poseidon verifier
     verifier = await Verifier.createVerifier(sender);
+    batchTreeVerifier = await BatchTreeVerifier.createVerifier(sender);
 
     // create token
     const tokenFactory = new TokenFactory(wallet);
@@ -336,7 +342,8 @@
       sender
     );
     
-    await anchorTrees.initialize(anchorProxy.contract.address, governanceDummyAddress, governanceDummy);
+    const batchTreeVerifierAddress = governanceDummyAddress;
+    await anchorTrees.initialize(anchorProxy.contract.address, batchTreeVerifier.contract.address, governanceDummy);
 
     // approve the anchor to spend the minted funds
     await token.approve(anchorProxy.contract.address, '10000000000000000000000');
@@ -348,11 +355,20 @@
       const wtns = await wtnsCalc.calculateWTNSBin(data,0);
       return wtns;
     }
+
+    depositDataEventFilter = anchorTrees.contract.filters.DepositData()
   })
 
   describe('#deposit', () => {
     it.only('deposit anchor proxy anchor trees', async () => {
       await anchorProxy.deposit(anchor1.contract.address, chainID);
+      await anchorProxy.deposit(anchor1.contract.address, chainID);
+      await anchorProxy.deposit(anchor1.contract.address, chainID);
+      await anchorProxy.deposit(anchor1.contract.address, chainID);
+      const depositEvents = await anchorTrees.contract.queryFilter(depositDataEventFilter);
+      const updateEvents = [];
+      depositEvents.map((e) => console.log((updateEvents.push({...e.args} as any))));
+      await anchorTrees.updateDepositTree(updateEvents);
     });
   });
  });

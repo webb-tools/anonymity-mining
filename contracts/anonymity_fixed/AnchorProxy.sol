@@ -59,14 +59,12 @@ contract AnchorProxy {
   ) public payable virtual {
     Instance memory instance = instances[_anchor];
     require(instance.state != InstanceState.DISABLED, "The instance is not supported");
-    console.log("not mined");
     
     instance.token.safeTransferFrom(msg.sender, address(this), _anchor.getDenomination()); //is .denomination correct?
     
     _anchor.deposit{ value: msg.value }(_commitment);
     
     if (instance.state == InstanceState.MINEABLE) {
-      console.log("mined");
       anchorTrees.registerDeposit(address(_anchor), _commitment);
     }
     emit EncryptedNote(msg.sender, _encryptedNote);

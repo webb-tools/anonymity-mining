@@ -79,8 +79,6 @@ export class AnchorProxy {
       _encryptedNote,
       { gasLimit: '0x5B8D80' }
     );
-
-    console.log("hi bear")
   
     await tx.wait();
 
