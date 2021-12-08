@@ -1,0 +1,238 @@
+import { ethers, BigNumberish, BigNumber } from "ethers";
+import { AnchorTrees as AnchorTreesContract} from '../../typechain/AnchorTrees';
+import { AnchorTrees__factory } from '../../typechain/factories/AnchorTrees__factory'
+import { p256, toHex } from '@webb-tools/utils';
+import { toFixedHex, bitsToNumber, poseidonHash, toBuffer } from "./utils";
+const jsSHA = require('jssha')
+const snarkjs = require('snarkjs');
+const MerkleTree  = require("fixed-merkle-tree");
+
+export class AnchorTrees {
+  signer: ethers.Signer;
+  contract: AnchorTreesContract;
+  depositTree: any;
+  withdrawalTree: any;
+
+  circuitWASMPath: string;
+  circuitZkeyPath: string;
+  witnessCalculator: any;
+
+  constructor(
+    signer: ethers.Signer,
+    contract: AnchorTreesContract,
+    treeHeight: number
+  ) {
+    this.signer = signer;
+    this.contract = contract;
+    this.depositTree = new MerkleTree(treeHeight, []);
+    console.log("root");
+    console.log(this.depositTree.root());
+    this.withdrawalTree = new MerkleTree(treeHeight, []);
+
+    this.circuitWASMPath = 'anonymity-mining-fixtures/fixtures/anchor_trees/0/anchor_trees_test.wasm';
+    this.circuitZkeyPath = 'anonymity-mining-fixtures/fixtures/anchor_trees/0/circuit_final.zkey';
+    this.witnessCalculator = require("../../anonymity-mining-fixtures/fixtures/anchor_trees/0/witness_calculator.js");
+  }
+  
+  public static async createAnchorTrees (
+    _governance: string,
+    levels: BigNumberish,
+    _maxEdges: number,
+    deployer: ethers.Signer
+  ) {
+    
+    const factory = new AnchorTrees__factory(deployer);
+    const contract = await factory.deploy(_governance, _maxEdges);
+    await contract.deployed();
+
+    return new AnchorTrees(deployer, contract, BigNumber.from(levels).toNumber());
+  }
+
+  public async initialize(
+    anchorProxy: string,
+    verifier: string,
+    governance: ethers.Signer
+  ) {
+    const tx = await this.contract.connect(governance).initialize(anchorProxy, verifier);
+    await tx.wait();
+  }
+
+  public static hashInputs(input) {
+    const sha = new jsSHA('SHA-256', 'ARRAYBUFFER')
+    sha.update(toBuffer(input.oldRoot, 32))
+    sha.update(toBuffer(input.newRoot, 32))
+    sha.update(toBuffer(input.pathIndices, 4))
+  
+    for (let i = 0; i < input.instances.length; i++) {
+      sha.update(toBuffer(input.hashes[i], 32))
+      sha.update(toBuffer(input.instances[i], 20))
+      sha.update(toBuffer(input.blockTimestamps[i], 4))
+    }
+  
+    const hash = '0x' + sha.getHash('HEX')
+    const result = BigNumber.from(hash)
+      .mod(BigNumber.from('21888242871839275222246405745257275088548364400416034343698204186575808495617'))
+      .toString()
+    return result
+  }
+
+  /**
+   * Generates inputs for a snark and tornado trees smart contract.
+   * This function updates MerkleTree argument
+   *
+   * @param tree Merkle tree with current smart contract state. This object is mutated during function execution.
+   * @param events New batch of events to insert.
+   * @returns {{args: [string, string, string, string, *], input: {pathElements: *, instances: *, blockTimestamps: *, newRoot: *, hashes: *, oldRoot: *, pathIndices: string}}}
+   */
+  public static batchTreeUpdate(tree, events) {
+    const batchHeight = Math.log2(events.length)
+    if (!Number.isInteger(batchHeight)) {
+      throw new Error('events length has to be power of 2')
+    }
+
+    const oldRoot = tree.root().toString()
+    const leaves = events.map((e) => poseidonHash([e.instance, e.hash, e.blockTimestamp]))
+    tree.bulkInsert(leaves)
+    const newRoot = tree.root().toString()
+    let { pathElements, pathIndices } = tree.path(tree.elements().length - 1)
+    pathElements = pathElements.slice(batchHeight).map((a) => BigNumber.from(a).toString())
+    pathIndices = bitsToNumber(pathIndices.slice(batchHeight)).toString()
+
+    const input:any = {
+      oldRoot: oldRoot,
+      newRoot: newRoot,
+      pathIndices: pathIndices,
+      pathElements: pathElements,
+      instances: events.map((e) => BigNumber.from(e.instance).toString()),
+      hashes: events.map((e) => BigNumber.from(e.hash).toString()),
+      blockTimestamps: events.map((e) => BigNumber.from(e.blockTimestamp).toString()),
+    }
+
+    input.argsHash = AnchorTrees.hashInputs(input)
+
+    const args:[string, string, string, string, any] = [
+      toFixedHex(input.argsHash),
+      toFixedHex(input.oldRoot),
+      toFixedHex(input.newRoot),
+      toFixedHex(input.pathIndices, 4),
+      events.map((e) => ({
+        hash: toFixedHex(e.hash),
+        instance: toFixedHex(e.instance, 20),
+        blockTimestamp: toFixedHex(e.blockTimestamp, 4),
+      })),
+    ];
+
+    return {input, args};
+  }
+
+  /**
+   * 
+   * What are the steps for getting the proof?
+   * 
+   * First need to generate a witness 
+   * Then need to use this witness to generate a proof
+   * It's really simple
+   * Do everything in the updateDepositTree function for now...and then move out logic into separate functions...no need to over optimize now
+   */
+
+   public static async groth16ExportSolidityCallData(proof: any, pub: any) {
+    let inputs = "";
+    for (let i = 0; i < pub.length; i++) {
+      if (inputs != "") inputs = inputs + ",";
+      inputs = inputs + p256(pub[i]);
+    }
+  
+    let S;
+    S=`[${p256(proof.pi_a[0])}, ${p256(proof.pi_a[1])}],` +
+      `[[${p256(proof.pi_b[0][1])}, ${p256(proof.pi_b[0][0])}],[${p256(proof.pi_b[1][1])}, ${p256(proof.pi_b[1][0])}]],` +
+      `[${p256(proof.pi_c[0])}, ${p256(proof.pi_c[1])}],` +
+      `[${inputs}]`;
+  
+    return S;
+  }
+
+   public static async generateProofCallData(proof: any, publicSignals: any) {
+    const result = await AnchorTrees.groth16ExportSolidityCallData(proof, publicSignals);
+    const fullProof = JSON.parse("[" + result + "]");
+    const pi_a = fullProof[0];
+    const pi_b = fullProof[1];
+    const pi_c = fullProof[2];
+
+    let proofEncoded = [
+      pi_a[0],
+      pi_a[1],
+      pi_b[0][0],
+      pi_b[0][1],
+      pi_b[1][0],
+      pi_b[1][1],
+      pi_c[0],
+      pi_c[1],
+    ]
+    .map(elt => elt.substr(2))
+    .join('');
+
+    return proofEncoded;
+  }
+
+   //TODO: define zkey path
+   public async proveAndVerify(wtns: any) {
+    console.log(`circuit zkey is ${this.circuitZkeyPath}`);
+    let res = await snarkjs.groth16.prove(this.circuitZkeyPath, wtns);
+    console.log("hib")
+    let proof = res.proof;
+    let publicSignals = res.publicSignals;
+
+    const vKey = await snarkjs.zKey.exportVerificationKey(this.circuitZkeyPath);
+    res = await snarkjs.groth16.verify(vKey, publicSignals, proof);
+
+    let proofEncoded = await AnchorTrees.generateProofCallData(proof, publicSignals);
+    return proofEncoded;
+  }
+
+  //TODO: need to define WASMPath and witnessCalculator
+  public async createWitness(data: any) {
+    const fileBuf = require('fs').readFileSync(this.circuitWASMPath);
+    const witnessCalculator = await this.witnessCalculator(fileBuf);
+    const buff = await witnessCalculator.calculateWTNSBin(data,0);
+    return buff;
+  }
+  
+  public async updateDepositTree(events) {
+    const {input, args} = AnchorTrees.batchTreeUpdate(this.depositTree, events);
+
+    //Generating Proof
+    //Step 1: Generate the witness input
+    //This is already done by the batchTreeUpdate method taken from tornado so we can skip.
+    //Step 2: Create the witness
+    console.log("start create witness")
+    const wtns = await this.createWitness(input);
+    console.log(`wtns is ${wtns}`);
+    //Step 3: Use the wtns to generate a proof
+    let proofEncoded = await this.proveAndVerify(wtns);
+
+    //End generating Proof
+
+    const tx = await this.contract.updateDepositTree(proofEncoded, ...args); 
+    tx.wait();
+  }
+
+  public async updateWithdrawalTree(events) {
+    const {input, args} = AnchorTrees.batchTreeUpdate(this.withdrawalTree, events);
+
+    //Generating Proof
+    //Step 1: Generate the witness input
+    //This is already done by the batchTreeUpdate method taken from tornado so we can skip.
+
+    //Step 2: Create the witness
+    const wtns = this.createWitness(input);
+
+    //Step 3: Use the wtns to generate a proof
+    let proofEncoded = await this.proveAndVerify(wtns);
+
+    //End generating Proof
+
+    const tx = await this.contract.updateWithdrawalTree(proofEncoded, ...args); 
+    tx.wait();
+  }
+  
+}
